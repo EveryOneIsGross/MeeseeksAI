@@ -1,23 +1,30 @@
-import json
-import uuid
+'''
+THIS IS THE MAIN GUTS AND GORE OF TEH SCRIPT, THE CYBERNETIC CORE-ABSTRACTION AND BORING BACKEND STUFF. SHOULDN'T NEED CHANGING ONCE I'VE FINISHED WITH THE CHORES.
+'''
+
 from typing import Any, Callable, Dict, List, Optional
+from tiktoken import get_encoding
+from bs4 import BeautifulSoup
+from gpt4all import Embed4All
+from textblob import TextBlob
+from datetime import datetime
 from openai import OpenAI
 import requests
-from bs4 import BeautifulSoup
-from datetime import datetime
+import hashlib
+import json
+import uuid
 import spacy
-from textblob import TextBlob
-from tiktoken import get_encoding
 import pickle
-from gpt4all import Embed4All
-import requests
-from bs4 import BeautifulSoup
 import PyPDF2
 import os
-import hashlib
+import re
+import csv
+from io import StringIO
 
 # Utilities for chunking text
-
+'''
+very boring text chunking function.
+'''
 class TextChunker:
     def __init__(self, text: str = None, chunk_size: int = 1000, overlap: int = 0):
         self.text = text
@@ -53,9 +60,51 @@ class TextChunker:
             current_pos += self.chunk_size - self.overlap
 
         return chunks
+    
+# text cleaning tool for parsing html and pdfs, cleaning special characters and whitespace.
+'''
+text_data = "Some initial text with special characters & and extra spaces.     "
+table_data = "Name, Age\nJohn Doe, 30\nJane Smith, 25"
+
+cleaner = TextCleaner(text_data)
+clean_text = cleaner.clean_text()
+csv_output = cleaner.parse_table_content(table_data)
+
+print("Cleaned Text:", clean_text)
+print("CSV Output:\n", csv_output)
+'''
+class TextCleaner:
+    def __init__(self, text: str):
+        self.text = text
+
+    def clean_text(self) -> str:
+        cleaned_text = self.text
+        cleaned_text = self.remove_special_characters(cleaned_text)
+        cleaned_text = self.remove_extra_whitespace(cleaned_text)
+        return cleaned_text
+    
+    def parse_table_content(self, table: str) -> str:
+        # Assumes each row of the table is separated by a newline and 
+        # each column within a row is separated by a comma or tab.
+        output = StringIO()
+        writer = csv.writer(output)
+        for row in table.strip().split('\n'):
+            columns = re.split(r'\t|,', row.strip())
+            writer.writerow(columns)
+        return output.getvalue()
+    
+    def remove_special_characters(self, text: str) -> str:
+        # Remove special characters except whitespace and commas (used in parsing CSV)
+        return re.sub(r'[^\w\s,]', '', text)
+
+    def remove_extra_whitespace(self, text: str) -> str:
+        # Replace multiple whitespaces with a single space
+        return re.sub(r'\s+', ' ', text).strip()
 
 # Tools for reading text, scraping web content, extracting named entities, and performing sentiment analysis
-
+'''
+I dunno if this works, I don't think I have even tried it. I'll replace this will an offline version of the same thing with a smol wikipedia from a pickle.
+'''
 class WikipediaSearchTool:
     def __init__(self, chunk_size: int = 1000, num_chunks: int = 10):
         self.chunk_size = chunk_size
@@ -82,7 +131,12 @@ class WikipediaSearchTool:
         return search_results
 
 # Takes a list of file paths, embeds the text in the files, and allows semantic search based on a query
+'''
+I wouldn't normally use such a big embedding model, but that's what opus chose from the docs.
+A more light weight model for simulation would be a more fun+buzzy a lil light w2v trained at inference etc.
+But maybe this is just a flex cause I could over do it for one humble test .pdf
 
+'''
 class SemanticFileSearchTool:
     def __init__(self, file_paths: List[str], embed_model: str, embed_dim: int = 768, chunk_size: int = 1000, top_k: int = 3):
         self.embedder = Embed4All(embed_model)
@@ -160,7 +214,9 @@ class SemanticFileSearchTool:
         return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 # Simple tool to read text from a file and chunk it into smaller pieces
-
+'''
+This could be more fun..  for diversity, we could return random chunks from the list, possibilty randomise chunking size, or even randomise the overlap.
+'''
 class TextReaderTool:
     def __init__(self, text_file: str, chunk_size: int, num_chunks: int):
         self.text_file = text_file
@@ -175,7 +231,9 @@ class TextReaderTool:
             return chunks[:self.num_chunks]
 
 # Tool to scrape text from a web page and chunk it into smaller pieces
-
+'''
+Should probably add cleaning, and some table / csv extraction. OH I HAVE ~TextCleaner~! But not implemented or tested yet.
+'''
 class WebScraperTool:
     def __init__(self, url: str, chunk_size: int, num_chunks: int):
         self.url = url
@@ -194,7 +252,10 @@ class WebScraperTool:
         return chunks[:self.num_chunks]
 
 # Tool to extract named entities from text using spaCy
-
+'''
+Getting a generic default option for entity extraction will make agentic graph awareness more robust between calls. Less about the operation on the text more about cheap flow reenforcement.
+Currently is on a default trash out setting.
+'''
 class NERExtractionTool:
     def __init__(self, text: str = None):
         self.text = text
@@ -217,7 +278,11 @@ class NERExtractionTool:
         return entities
 
 # Tool to perform sentiment analysis using TextBlob
-
+'''
+RANK. This will become a vibes based rank method for decreasing the weights of an output for the rest of the gen. I have done some similar before by updating embedding weights...
+But philosophically here I think a VIBE and FUZZY rank method will be better (4us) than other ~agententic methods~ based on token burning, iterations and masking.
+Strong short throw zero shot wants on the general pipeline flow. No rejections cause mistakes define the boundaries.
+'''
 class SemanticAnalysisTool:
     def __init__(self, text: str = None):
         self.text = text
@@ -273,39 +338,62 @@ class Agent:
             api_key='ollama',
         )
 
+
+    # This bit is the main centre of operations for the agents, it executes the tasks, and logs the interactions.
+    '''
+    THIS NEEDS ATTENTION. I HAVE THOUGHTS ON THOUGHTS ON THE CHUNKING THOUGHTS AND WEIRD LEANING TOWARDS CONTEXT ALWAYS LOADING UP IN THE SYSTEM PROMPT....
+    '''
+
     def execute_task(self, task: "Task", context: Optional[str] = None) -> str:
         messages = []
+        
         if self.persona and self.verbose:
             messages.append({"role": "system", "content": f"Background: {self.persona}"})
-        messages.append({"role": "system", "content": f"You are a {self.role} with the goal: {self.goal}. The expected output is: {task.expected_output}"})
-        messages.append({"role": "user", "content": f"Your task is to {task.instructions}."})
+
+        system_prompt = f"You are a {self.role} with the goal: {self.goal}.\n"
+        system_prompt += f"The expected output is: {task.expected_output}\n"
+        system_prompt += f"Your task is to {task.instructions}.\n"
+
+        thoughts = []
+
         if context:
-            messages.append({"role": "assistant", "content": f"Context from {task.context_agent_role}:\n{context}"})
+            context_prompt = f"Context from {task.context_agent_role}:\n{context}\n"
+            thoughts.append(context_prompt)
 
         if task.tool_name in self.tools:
             tool = self.tools[task.tool_name]
+            
             if isinstance(tool, TextReaderTool) or isinstance(tool, WebScraperTool):
                 text_chunks = tool.read_text() if isinstance(tool, TextReaderTool) else tool.scrape_text()
-                for i, chunk in enumerate(text_chunks, start=1):
-                    messages.append({"role": "system", "content": f"<text_chunk{i}>{chunk['text']}</text_chunk{i}>"})
+                for chunk in text_chunks:
+                    thoughts.append(chunk['text'])
+            
             elif isinstance(tool, SemanticAnalysisTool):
                 sentiment_result = tool.analyze_sentiment()
-                messages.append({"role": "system", "content": f"Sentiment Analysis Result: {sentiment_result}"})
+                thoughts.append(f"Sentiment Analysis Result: {sentiment_result}")
+            
             elif isinstance(tool, NERExtractionTool):
                 # Assume 'context' contains the necessary text to analyze
                 entities = tool.extract_entities(context)
-                messages.append({"role": "system", "content": f"Extracted Entities: {entities}"})
+                thoughts.append(f"Extracted Entities: {entities}")
+            
             elif isinstance(tool, SemanticFileSearchTool):
                 # Construct the query by joining the outputs from the context tasks
                 query = "\n".join([c.output for c in task.context if c.output])
-                
                 # Perform the semantic search and get the relevant file chunks
                 relevant_chunks = tool.search(query)
-                
-                # Add the relevant file chunks to the messages
+                # Add the relevant file chunks to the thoughts
                 for chunk in relevant_chunks:
                     chunk_text = f"File: {chunk['file']}\nText: {chunk['text']}\nScore: {chunk['score']:.3f}"
-                    messages.append({"role": "system", "content": chunk_text})
+                    thoughts.append(chunk_text)
+
+        if thoughts:
+            thought_prompt = "\n".join([f"Thought {i+1}: {thought}" for i, thought in enumerate(thoughts)])
+            system_prompt += f"Relevant Information:\n{thought_prompt}\n"
+        else:
+            system_prompt += "No additional relevant information found.\n"
+
+        messages.append({"role": "system", "content": system_prompt.strip()})
 
         response = self.client.chat.completions.create(
             model=self.model,
@@ -313,7 +401,6 @@ class Agent:
         )
 
         result = response.choices[0].message.content
-
         # Log the interaction
         self.log_interaction(messages, result)
 
@@ -404,7 +491,9 @@ class Task:
         }
         return prompt
 
-
+'''
+Logging and recording of outputs is ALLL OVER THE PLACE. A logging class and json formatter and r/w manager would be a good idea.
+'''
 
 class Squad:
     def __init__(self, agents: List['Agent'], tasks: List['Task'], verbose: bool = False, log_file: str = "squad_log.json"):
@@ -517,17 +606,38 @@ class Squad:
             json.dump(self.log_data, file, indent=2)
 
 
+''''
+
+THIS WILL BE A DIFFERENT FILE FOR THE MAIN FLOW, THIS IS JUST A SNIPPET FOR TESTING THE AGENTS AND TOOLS.
+IT WILL BE JUST XML PRESET STAGING AREA. 
+
+
+'''
+
+
+'''
+AGENTS HAZ TASKS, TASK HAZ TOOLS, TOOLS HAZ RESOURCES
+'''
+
+
 def mainflow():
+
+    # resources for the agents, roles, goals, tools, verbose, persona, etc. just to organise input docs.
+
+    text_doc1 = "inputs/cyberanimism_clean.txt"
+    text_doc2 = "inputs/system_documentation.txt"
+    pdf_doc1 = "inputs/book1.pdf"
+    web_doc1 = "http://matplotlib.org/stable/gallery/mplot3d/2dcollections3d.html#sphx-glr-gallery-mplot3d-2dcollections3d-py"
 
     #define toolsettings for flow sesh
 
-    text_reader_tool = TextReaderTool("cyberanimism_clean.txt", chunk_size=1000, num_chunks=5)
-    web_scraper_tool = WebScraperTool("http://matplotlib.org/stable/gallery/mplot3d/2dcollections3d.html#sphx-glr-gallery-mplot3d-2dcollections3d-py", chunk_size=512, num_chunks=2)
+    text_reader_tool = TextReaderTool(text_doc1, chunk_size=1000, num_chunks=5)
+    web_scraper_tool = WebScraperTool(web_doc1, chunk_size=512, num_chunks=2)
     sentiment_analysis_tool = SemanticAnalysisTool("")
     ner_extraction_tool = NERExtractionTool("")
-    system_docs_tool = TextReaderTool("system_documentation.txt", chunk_size=1000, num_chunks=10)  
-    semantic_search_tool = SemanticFileSearchTool(file_paths=['book1.pdf', 'cyberanimism_clean.txt'], embed_model='nomic-embed-text-v1.5.f16.gguf', chunk_size=500, top_k=5)
-    semantic_search_tool.save_embeddings('file_embeddings.pickle')
+    system_docs_tool = TextReaderTool(text_doc2, chunk_size=1000, num_chunks=10)  
+    semantic_search_tool = SemanticFileSearchTool(file_paths=[pdf_doc1, text_doc1], embed_model='nomic-embed-text-v1.5.f16.gguf', chunk_size=500, top_k=5)
+    #semantic_search_tool.save_embeddings('file_embeddings.pickle') - I don't want to delete this yet but pretty sure I am good with the other hashed cache pickle. 
     wikipedia_search_tool = WikipediaSearchTool(chunk_size=500, num_chunks=5)
 
 
@@ -564,7 +674,7 @@ def mainflow():
     )
 
     planner = Agent(
-        role="Planner",  # Added the 'role' argument
+        role="Planner", 
         goal="Develop comprehensive plans and strategies for efficient systems management.",
         persona="You are an experienced Systems Manager with a proven track record in developing and implementing effective plans and strategies to optimize system performance, ensure reliability, and improve operational efficiency.",
         tools={"system_docs": system_docs_tool},
@@ -577,13 +687,6 @@ def mainflow():
         persona='You are an expert in semantic search and information retrieval.',
         tools={'semantic_search': semantic_search_tool},
         verbose=True
-    )
-
-    wikipedia_search_task = Task(
-        instructions='Use Wikipedia to find relevant articles and summarize the key information related to the given topic.',
-        expected_output='A summary of the top Wikipedia articles related to the given topic, including article titles, URLs, and chunked content.',
-        agent=wikipedia_expert,
-        tool_name='wikipedia_search'
     )
 
     summarizer = Agent(
@@ -609,6 +712,13 @@ def mainflow():
     )
 
     # the tasks these are selfexplanatory, agents DO TEH TASKs.
+
+    wikipedia_search_task = Task(
+        instructions='Use Wikipedia to find relevant articles and summarize the key information related to the given topic.',
+        expected_output='A summary of the top Wikipedia articles related to the given topic, including article titles, URLs, and chunked content.',
+        agent=wikipedia_expert,
+        tool_name='wikipedia_search'
+    )
 
     txt_task = Task(
         instructions="Analyze the provided text and identify key insights and patterns.",
@@ -674,10 +784,14 @@ def mainflow():
         expected_output="A mermaid graph illustrating the relationships and connections in the summary report.\n```mermaid\ngraph TD\n",
         agent=mermaid,
         context=[summary, txt_task, search_task],
-        output_file='mermaid_output.txt',
+        output_file='mermaid_output.mmd',
     )   
 
     # the squad is where you define the flow of the pipeline, sequence of events.
+
+    '''
+    HERE WE CREATE THE GRAPH OF 'AGENTS' AS NODES AND 'TASKS' AS EDGES. THIS DEFINES THE FLOW OF THE AGENTS.
+    '''
 
     squad = Squad(
         agents=[researcher, web_analyzer, planner, summarizer, semantic_searcher, sentimentalizer, entity_extractor, mermaid],
