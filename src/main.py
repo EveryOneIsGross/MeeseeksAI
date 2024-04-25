@@ -1,5 +1,5 @@
 '''
-THIS IS THE MAIN GUTS AND GORE OF TEH SCRIPT, THE CYBERNETIC CORE-ABSTRACTION AND BORING BACKEND STUFF. SHOULDN'T NEED CHANGING ONCE I'VE FINISHED WITH THE CHORES.
+THIS IS THE MAIN GUTS AND GORE OF TEH SCRIPT, THE CYBERNETIC CORE ABSTRACTION AND BACKEND STUFF. 
 '''
 
 from typing import Any, Callable, Dict, List, Optional
@@ -133,8 +133,7 @@ class WikipediaSearchTool:
 # Takes a list of file paths, embeds the text in the files, and allows semantic search based on a query
 '''
 I wouldn't normally use such a big embedding model, but that's what opus chose from the docs.
-A more light weight model for simulation would be a more fun+buzzy a lil light w2v trained at inference etc.
-But maybe this is just a flex cause I could over do it for one humble test .pdf
+A more light weight model for simulation would be a more buzzy but light w2v trained at inference time.
 
 '''
 class SemanticFileSearchTool:
@@ -338,28 +337,28 @@ class Agent:
             api_key='ollama',
         )
 
-
     # This bit is the main centre of operations for the agents, it executes the tasks, and logs the interactions.
     '''
-    THIS NEEDS ATTENTION. I HAVE THOUGHTS ON THOUGHTS ON THE CHUNKING THOUGHTS AND WEIRD LEANING TOWARDS CONTEXT ALWAYS LOADING UP IN THE SYSTEM PROMPT....
+    THIS BITS THE CYBERNETIC CORE. IT IS THE LINGUISTIC AND SEMANTIC OPERATIONS OF THE AGENTS. IT IS THE MAIN FUNCTIONALITY OF THE AGENTS.
+    I HAVE THOUGHTS ON THOUGHTS ON THE CHUNKING THOUGHTS AND A WEIRD LEANING TOWARDS CONTEXT ALWAYS LOADING UP IN THE SYSTEM PROMPT....
+    I SUSPECT THIS WILL BECOME MORE NOTICABLE WHY AS WE FLESH OUT THE AGENTS PROMPTS.
     '''
-
     def execute_task(self, task: "Task", context: Optional[str] = None) -> str:
         messages = []
         
         if self.persona and self.verbose:
-            messages.append({"role": "system", "content": f"Background: {self.persona}"})
+            messages.append({"role": "system", "content": f"{self.persona}"})
 
         system_prompt = f"You are a {self.role} with the goal: {self.goal}.\n"
         system_prompt += f"The expected output is: {task.expected_output}\n"
-        system_prompt += f"Your task is to {task.instructions}.\n"
 
-        thoughts = []
+        messages.append({"role": "system", "content": system_prompt.strip()})
+        messages.append({"role": "user", "content": f"Your task is to {task.instructions}."})
 
         if context:
-            context_prompt = f"Context from {task.context_agent_role}:\n{context}\n"
-            thoughts.append(context_prompt)
+            messages.append({"role": "assistant", "content": f"Context from {task.context_agent_role}:\n{context}"})
 
+        thoughts = []
         if task.tool_name in self.tools:
             tool = self.tools[task.tool_name]
             
@@ -373,27 +372,24 @@ class Agent:
                 thoughts.append(f"Sentiment Analysis Result: {sentiment_result}")
             
             elif isinstance(tool, NERExtractionTool):
-                # Assume 'context' contains the necessary text to analyze
                 entities = tool.extract_entities(context)
                 thoughts.append(f"Extracted Entities: {entities}")
             
             elif isinstance(tool, SemanticFileSearchTool):
-                # Construct the query by joining the outputs from the context tasks
                 query = "\n".join([c.output for c in task.context if c.output])
-                # Perform the semantic search and get the relevant file chunks
                 relevant_chunks = tool.search(query)
-                # Add the relevant file chunks to the thoughts
                 for chunk in relevant_chunks:
-                    chunk_text = f"File: {chunk['file']}\nText: {chunk['text']}\nScore: {chunk['score']:.3f}"
+                    chunk_text = f"File: {chunk['file']}\nText: {chunk['text']}\Relevance: {chunk['score']:.3f}"
                     thoughts.append(chunk_text)
 
         if thoughts:
             thought_prompt = "\n".join([f"Thought {i+1}: {thought}" for i, thought in enumerate(thoughts)])
-            system_prompt += f"Relevant Information:\n{thought_prompt}\n"
+            #messages.append({"role": "user", "content": f"Based on the provided Relevant Information here are your thoughts:\n{thought_prompt}"})
+            #messages.append({"role": "user", "content": f"Based on the provided Relevant Information here are your thoughts:\n{thought_prompt}"})
+            #messages.append({"role": "user", "content": f"Based on the provided Relevant Information here are your thoughts:\n{thought_prompt}"})
+            messages.append({"role": "user", "content": f"Reflecting on the provided Relevant Information here are your thoughts:\n{thought_prompt}"})
         else:
-            system_prompt += "No additional relevant information found.\n"
-
-        messages.append({"role": "system", "content": system_prompt.strip()})
+            messages.append({"role": "user", "content": "No additional relevant information found."})
 
         response = self.client.chat.completions.create(
             model=self.model,
@@ -401,7 +397,6 @@ class Agent:
         )
 
         result = response.choices[0].message.content
-        # Log the interaction
         self.log_interaction(messages, result)
 
         if self.step_callback:
@@ -415,6 +410,7 @@ class Agent:
             "response": response,
             "timestamp": datetime.now().isoformat()
         })
+
 
 # Task class for defining the tasks, expected output, agents, async execution, context, output file, callback, human input, tool name, input tasks, and output tasks
 class Task:
