@@ -1,3 +1,3 @@
-![image](https://github.com/EveryOneIsGross/MeeseeksAI/assets/23621140/18cb6514-0b74-4431-88bf-f126398c4ab8)
 
-A framework for orechestrating AI agents using a mermaid graph
+![meeseeeeeeks](https://github.com/EveryOneIsGross/MeeseeksAI/assets/23621140/cc571470-0d4e-4f1f-a729-584545e502f8)
+
