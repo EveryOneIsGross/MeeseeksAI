@@ -214,3 +214,191 @@ def mainflow():
 ```
 
 With these modifications, the `Resources` class now handles string templates for contextualizing chunks, and the resulting chunk dictionaries include additional metadata such as file information and start/end positions. This modularizes the
+Here's the updated script with the new `Resources` class integrated and all the relevant classes updated to accommodate the new structure:
+
+```python
+# ... (existing imports and utility classes)
+
+class Resources:
+    def __init__(self, resource_type: str, resource_path: str, context_template: str = None):
+        self.resource_type = resource_type
+        self.resource_path = resource_path
+        self.context_template = context_template
+        self.data = self.load_resource()
+        self.chunks = []
+
+    def load_resource(self):
+        if self.resource_type == 'text':
+            return self.load_text()
+        elif self.resource_type == 'pdf':
+            return self.load_pdf()
+        elif self.resource_type == 'web':
+            return self.load_web()
+        else:
+            raise ValueError(f"Unsupported resource type: {self.resource_type}")
+
+    def load_text(self):
+        with open(self.resource_path, 'r') as file:
+            return file.read()
+
+    def load_pdf(self):
+        with open(self.resource_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+            return text
+
+    def load_web(self):
+        response = requests.get(self.resource_path)
+        return response.text
+
+    def chunk_resource(self, chunk_size: int, overlap: int = 0):
+        chunker = TextChunker(self.data, chunk_size, overlap)
+        self.chunks = chunker.chunk_text()
+
+    def contextualize_chunk(self, chunk: Dict[str, Any]) -> str:
+        if self.context_template:
+            return self.context_template.format(
+                chunk=chunk['text'],
+                file=self.resource_path,
+                start=chunk['start'],
+                end=chunk['end']
+            )
+        else:
+            return chunk['text']
+
+class TextReaderTool:
+    def __init__(self, resource: Resources, chunk_size: int, num_chunks: int):
+        self.resource = resource
+        self.chunk_size = chunk_size
+        self.num_chunks = num_chunks
+
+    def read_text(self) -> List[Dict[str, Any]]:
+        self.resource.chunk_resource(self.chunk_size)
+        contextualized_chunks = [
+            {
+                'text': self.resource.contextualize_chunk(chunk),
+                'start': chunk['start'],
+                'end': chunk['end'],
+                'file': self.resource.resource_path
+            }
+            for chunk in self.resource.chunks[:self.num_chunks]
+        ]
+        return contextualized_chunks
+
+class WebScraperTool:
+    def __init__(self, resource: Resources, chunk_size: int, num_chunks: int):
+        self.resource = resource
+        self.chunk_size = chunk_size
+        self.num_chunks = num_chunks
+
+    def scrape_text(self) -> List[Dict[str, Any]]:
+        self.resource.chunk_resource(self.chunk_size)
+        contextualized_chunks = [
+            {
+                'text': self.resource.contextualize_chunk(chunk),
+                'start': chunk['start'],
+                'end': chunk['end'],
+                'file': self.resource.resource_path
+            }
+            for chunk in self.resource.chunks[:self.num_chunks]
+        ]
+        return contextualized_chunks
+
+class SemanticFileSearchTool:
+    def __init__(self, resources: List[Resources], embed_model: str, embed_dim: int = 768, chunk_size: int = 1000, top_k: int = 3):
+        self.embedder = Embed4All(embed_model)
+        self.embed_dim = embed_dim
+        self.chunk_size = chunk_size
+        self.top_k = top_k
+        self.chunker = TextChunker(text=None, chunk_size=chunk_size)
+        self.file_embeddings = self.load_or_generate_file_embeddings(resources)
+
+    def load_or_generate_file_embeddings(self, resources: List[Resources]) -> Dict[str, List[Dict[str, Any]]]:
+        file_hash = self.get_file_hash(resources)
+        pickle_file = f"file_embeddings_{file_hash}.pickle"
+        if os.path.exists(pickle_file):
+            self.load_embeddings(pickle_file)
+        else:
+            self.file_embeddings = self.generate_file_embeddings(resources)
+            self.save_embeddings(pickle_file)
+        return self.file_embeddings
+
+    def get_file_hash(self, resources: List[Resources]) -> str:
+        file_contents = "".join(sorted([resource.resource_path for resource in resources]))
+        return hashlib.sha256(file_contents.encode()).hexdigest()
+
+    def generate_file_embeddings(self, resources: List[Resources]) -> Dict[str, List[Dict[str, Any]]]:
+        file_embeddings = {}
+        for resource in resources:
+            resource.chunk_resource(self.chunk_size)
+            chunk_embeddings = [self.embedder.embed(chunk['text'], prefix='search_document') for chunk in resource.chunks]
+            file_embeddings[resource.resource_path] = [
+                {
+                    'text': resource.contextualize_chunk(chunk),
+                    'start': chunk['start'],
+                    'end': chunk['end'],
+                    'file': resource.resource_path,
+                    'embedding': embedding
+                }
+                for chunk, embedding in zip(resource.chunks, chunk_embeddings)
+            ]
+        return file_embeddings
+
+    # ... (rest of the SemanticFileSearchTool class remains the same)
+
+# ... (rest of the utility classes and Agent class remain the same)
+
+class Task:
+    def __init__(
+        self,
+        instructions: str,
+        expected_output: str,
+        agent: Optional[Agent] = None,
+        async_execution: bool = False,
+        context: Optional[List["Task"]] = None,
+        output_file: Optional[str] = None,
+        callback: Optional[Callable] = None,
+        human_input: bool = False,
+        tool_name: Optional[str] = None,
+        input_tasks: Optional[List["Task"]] = None,
+        output_tasks: Optional[List["Task"]] = None,
+    ):
+        # ... (rest of the Task class remains the same)
+
+    def execute(self, context: Optional[str] = None) -> str:
+        # ... (rest of the execute method remains the same)
+
+    def prepare_prompt(self, context):
+        # ... (rest of the prepare_prompt method remains the same)
+
+class Squad:
+    # ... (Squad class remains the same)
+
+def mainflow():
+    text_resource = Resources('text', "inputs/cyberanimism_clean.txt", "Here are your thoughts on the statement '{chunk}' from the file '{file}' (start: {start}, end: {end}): ")
+    pdf_resource = Resources('pdf', "inputs/book1.pdf", "The following excerpt is from the PDF '{file}' (start: {start}, end: {end}):\n{chunk}")
+    web_resource = Resources('web', "http://matplotlib.org/stable/gallery/mplot3d/2dcollections3d.html#sphx-glr-gallery-mplot3d-2dcollections3d-py", "The following content is scraped from the web page '{file}':\n{chunk}")
+    system_docs_resource = Resources('text', "inputs/system_documentation.txt", "The following is a snippet from the system documentation '{file}' (start: {start}, end: {end}):\n{chunk}")
+
+    text_reader_tool = TextReaderTool(text_resource, chunk_size=1000, num_chunks=5)
+    web_scraper_tool = WebScraperTool(web_resource, chunk_size=512, num_chunks=2)
+    sentiment_analysis_tool = SemanticAnalysisTool("")
+    ner_extraction_tool = NERExtractionTool("")
+    system_docs_tool = TextReaderTool(system_docs_resource, chunk_size=1000, num_chunks=10)
+    semantic_search_tool = SemanticFileSearchTool(resources=[pdf_resource, text_resource], embed_model='nomic-embed-text-v1.5.f16.gguf', chunk_size=500, top_k=5)
+    wikipedia_search_tool = WikipediaSearchTool(chunk_size=500, num_chunks=5)
+
+    # ... (rest of the mainflow function remains the same)
+
+if __name__ == "__main__":
+    mainflow()
+```
+
+In this updated script:
+- The new `Resources` class is integrated with the existing code, handling the loading, chunking, and contextualizing of different resource types.
+- The `TextReaderTool`, `WebScraperTool`, and `SemanticFileSearchTool` classes are updated to work with `Resources` instances instead of directly handling file paths or URLs.
+- The `mainflow()` function is updated to create `Resources` instances with appropriate context templates and pass them to the respective tools.
+
+With these changes, the `Resources` class is now a central component of the agentic graph flow pipeline, enabling modular handling of different resource types, contextualization of chunks, and inclusion of additional metadata.
