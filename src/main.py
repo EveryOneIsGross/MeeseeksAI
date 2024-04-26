@@ -450,10 +450,16 @@ class Agent:
         if task.tool_name in self.tools:
             tool = self.tools[task.tool_name]
 
-            if isinstance(tool, (TextReaderTool, WebScraperTool, SemanticFileSearchTool)):
+            if isinstance(tool, (TextReaderTool, WebScraperTool)):
                 text_chunks = tool.read_text() if isinstance(tool, TextReaderTool) else tool.scrape_text()
                 for chunk in text_chunks:
                     thoughts.append(chunk['text'])
+            elif isinstance(tool, (SemanticFileSearchTool, Word2VecSearchTool)):
+                query = "\n".join([c.output for c in task.context if c.output])
+                relevant_chunks = tool.search(query)
+                for chunk in relevant_chunks:
+                    chunk_text = f"File: {chunk['file']}\nText: {chunk['text']}\nRelevance: {chunk['score']:.3f}"
+                    thoughts.append(chunk_text)
 
             elif isinstance(tool, SemanticAnalysisTool):
                 sentiment_result = tool.analyze_sentiment()
@@ -462,10 +468,9 @@ class Agent:
             elif isinstance(tool, NERExtractionTool):
                 entities = tool.extract_entities(context)
                 thoughts.append(f"Extracted Entities: {entities}")
-
         if thoughts:
-            thought_prompt = "\n".join([f"Thought {i+1}: {thought}" for i, thought in enumerate(thoughts)])
-            messages.append({"role": "user", "content": f"Reflecting on the provided Relevant Information here are your thoughts:\n{thought_prompt}"})
+            thoughts_prompt = "\n".join([thought for thought in thoughts])
+            messages.append({"role": "user", "content": f"{thoughts_prompt}"})
         else:
             messages.append({"role": "user", "content": "No additional relevant information found."})
 
@@ -473,7 +478,6 @@ class Agent:
             model=self.model,
             messages=messages,
         )
-
         result = response.choices[0].message.content
         self.log_interaction(messages, result)
 
