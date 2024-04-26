@@ -1,16 +1,23 @@
 away from the cyberdeck thoughts
-- new variable in tools to handle formatting chunks, allow me to use "thoughts: " or more accurate file info based on tool settings
+---
+- new variable in tools to handle formatting chunks, allow me to use "thoughts: " or more accurate file info based on tool settings - done below
 
-- refactor 'Resources' as class similar to how Tools, Agents and Tasks are setup. 
+- refactor 'Resources' as class similar to how Tools, Agents and Tasks are setup. - done below
 
 Agents->Tasks-->Tools-->Resources
 is the core system and graph inherency.
 
-- Add user feedback interrupt tool, initially similate this with a "simulated user" agent, but make it flexible for deployment.
+- Add user feedback interrupt tool, initially similate this with a "simulated user" agent, but make it flexible for deployment. - haz elsewhere.
+
+- make a library of existing Agents, Tasks, Tools and Resources for copy pasting. do the same for flows.
+
+- if we standardise the modules, we could save them as pickles with their embeddings, settings and docs all in one for sharing. ala the metadata in the rpg jpegs for charcter rp.  
 
 - focus on "emulating" a agentic pipeline for datagen into sharegpt schema.
 
-- refocus my embedding and data injest to be more chaotic for good diverse inter domain data gen. focus on building smol solutions for local based on existing api intercepts for easy swapping out the local lattice for a money burning corpo one for future scale. letting us foxus big dog energy on the more sensitive nodes in the flowgraph.
+- I'll avoid extending graph structure for now, and know its simple enough to build/track later. keep that and the cybernetic-core prompt real streamlined and basic. agents should just feel like I/O nodes, even simplier abstraction than dspy programatic, 1950s cybernetics 101 first chart for dummies style. 
+
+- refocus my embedding and data injest to be more chaotic for good diverse inter domain data gen. focus on building smol solutions for local based on existing api intercepts for easy swapping out the local lattice for a money burning corpo one for future scale. letting us foxus big dog energy on the more sensitive nodes in the flowgraph if/when needed.
 
 ---
 
