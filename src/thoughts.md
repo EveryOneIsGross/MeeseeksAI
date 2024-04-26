@@ -3,8 +3,10 @@ away from the cyberdeck thoughts
 
 - refactor 'Resources' as class similar to how Tools, Agents and Tasks are setup. 
 
-Agents, Tasks, Tools, Resources
-is the core system and graph inherency
+Agents->Tasks-->Tools-->Resources
+is the core system and graph inherency.
+
+- Add user feedback interrupt tool, initially similate this with a "simulated user" agent, but make it flexible for deployment.
 
 - focus on "emulating" a agentic pipeline for datagen into sharegpt schema.
 
